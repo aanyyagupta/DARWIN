@@ -3,7 +3,7 @@
 ### Dual Adaptation Framework for Robust Cross-Session and Cross-Subject EEG Decoding
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-final%20review-blue)]()
+[![Status](https://img.shields.io/badge/status-ongoing-blue)]()
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)]()
 
 > A calibration-free deep learning framework for robust EEG decoding that jointly models inter-subject variability and intra-session drift through similarity-based subject conditioning and continuous latent-state tracking — without gradient updates at test time.
