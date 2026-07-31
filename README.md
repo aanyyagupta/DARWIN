@@ -151,10 +151,12 @@ No labels, calibration procedure, or optimization step is required at any point 
 DARWIN/
 ├── README.md
 ├── LICENSE
-├── CHANGELOG.md       ← weekly development log (append-only)
+├── CHANGELOG.md        
 ├── requirements.txt
 │
-├── configs/
+├── reports/              ← Research progress lives here
+│   ├── weekly/
+│   │   ├── week01.md
 │
 ├── docs/
 │   ├── architecture.md         ← module-by-module spec (LSP, SSRS, FiLM, DTKF, classifier)
