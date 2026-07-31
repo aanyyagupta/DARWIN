@@ -1,82 +1,285 @@
-# DARWIN — Dual Adaptation framework for Robust cross-session and cross-subject WIN-decoding
+# DARWIN
+### Dual Adaptation Framework for Robust Cross-Session and Cross-Subject EEG Decoding
 
-A calibration-free framework for cross-session and cross-subject EEG decoding. DARWIN combines **subject-adaptive conditioning** via similarity-weighted donor selection (SSRS) with **continuous session-drift tracking** via a lightweight diagonal Kalman filter (DTKF), operating in a single unified 64-dimensional embedding space.
-
-> Status: Final Review (Spec Rev. 3.5) — implementation in progress. This repo tracks weekly development against the [8-week plan](docs/ROADMAP.md).
+> A calibration-free deep learning framework for robust EEG decoding that jointly models inter-subject variability and intra-session drift through subject-adaptive conditioning and continuous latent-state tracking.
 
 ---
 
-## Why DARWIN
+## Overview
 
-EEG decoders trained on one subject or session degrade sharply on new users or new recordings, because two different kinds of variation get conflated:
+Brain-Computer Interface (BCI) systems based on electroencephalography (EEG) often exhibit a significant drop in performance when models trained on one subject or recording session are deployed on unseen users or future sessions. These distribution shifts arise from two fundamentally different sources of variability:
 
-- **Cross-subject variation** — discrete, fixed at session start, unstructured (skull thickness, cortical folding, electrode placement).
-- **Cross-session variation** — continuous, evolving, structured (fatigue, electrode impedance, attention drift).
+- **Cross-subject variability** caused by anatomical and physiological differences between individuals.
+- **Cross-session variability** caused by temporal changes such as fatigue, electrode impedance, cognitive state, and attention drift.
 
-Prior approaches (adversarial domain adaptation, full disentanglement, meta-learning) either fight instability at small scale, over-parameterize an unvalidated assumption, or require test-time calibration. DARWIN's core hypothesis is that these two variation sources are **separable**, and that the right tool for each is different: **selection/matching** for subjects, **tracking/filtering** for drift. This is validated empirically (not assumed) at Stage 3.5 before any DARWIN-specific module is built.
+Most existing approaches attempt to remove these variations through adversarial learning, domain adaptation, or meta-learning. While effective under specific settings, these methods frequently require calibration, introduce optimization instability, or increase computational complexity.
 
-Read the full rationale in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+DARWIN approaches this problem from a different perspective.
 
-## How it works, in one paragraph
+Instead of forcing invariance, DARWIN explicitly models both sources of variability using specialized adaptation mechanisms operating within a unified latent representation. Subject-specific characteristics are estimated through similarity-based donor selection, while session-specific changes are continuously tracked using a lightweight Kalman filtering strategy. The resulting framework enables calibration-free inference without requiring gradient updates during deployment.
 
-Raw EEG passes through a per-dataset **Learnable Spatial Projection** into a shared channel space, then an EEGNet-style 9-band encoder and a fixed-width projection head produce a **64-dim embedding** — the single space in which everything downstream lives. This embedding is pretrained self-supervised (InfoNCE, subject-balanced negatives) so it carries task content without collapsing onto subject identity. At test time, ~10s of unlabeled data gives an initial subject embedding via **SSRS** (donor similarity, with confidence-gated fallback to the population average), and a **diagonal Kalman filter** then updates that embedding continuously — sample by sample — as the session progresses, with no undefined measurement model because state and measurement share the same 64-dim space by construction. A **FiLM** layer conditions a frozen classifier on the current subject+session state. No labels, no backprop, and no calibration step at test time.
+---
 
-## Repo structure
+# Key Contributions
+
+- **Unified Latent Representation**
+  - A shared 64-dimensional embedding space is used consistently across representation learning, subject adaptation, drift estimation, and classification.
+
+- **Learnable Spatial Projection**
+  - Dataset-specific EEG channel layouts are harmonized using trainable spatial projections rather than rigid channel intersection, preserving more physiological information.
+
+- **Subject Similarity-Based Adaptation (SSRS)**
+  - New users are initialized through similarity-weighted donor embeddings with confidence-aware fallback mechanisms.
+
+- **Continuous Drift Tracking (DTKF)**
+  - A lightweight diagonal Kalman Filter continuously updates subject representations throughout inference without requiring labeled data.
+
+- **Feature-wise Conditional Modulation**
+  - FiLM conditioning dynamically adapts learned EEG representations according to the estimated subject state.
+
+- **Calibration-Free Deployment**
+  - No backpropagation, parameter updates, or supervised calibration are required during inference.
+
+---
+
+# Framework Overview
+
+The DARWIN pipeline consists of six primary stages:
 
 ```
-.
-├── README.md                  ← you are here
-├── CHANGELOG.md                ← weekly development log (append-only)
+
+Raw EEG
+│
+├── Signal Preprocessing
+│
+├── Learnable Spatial Projection
+│
+├── EEG Feature Encoder
+│
+├── Self-Supervised Representation Learning
+│
+├── Subject & Session Adaptation
+│ │
+│ ├── SSRS
+│ └── DTKF
+│
+└── FiLM Conditioned Classifier
+↓
+Task Prediction
+
+```
+
+The framework maintains a single latent representation throughout the entire inference pipeline, eliminating representation mismatch between adaptation modules and ensuring computational efficiency.
+
+---
+
+# Core Components
+
+## Learnable Spatial Projection (LSP)
+
+A lightweight dataset-aware projection layer aligns heterogeneous EEG montages into a common spatial representation while preserving information from non-overlapping electrodes.
+
+---
+
+## Self-Supervised Representation Learning
+
+DARWIN first learns task-aware EEG embeddings using contrastive learning with subject-balanced negative sampling. This stage produces representations that capture meaningful neural activity without relying on labeled calibration data.
+
+---
+
+## Source Subject Relevance Scorer (SSRS)
+
+Given a small amount of unlabeled EEG from a previously unseen user, SSRS computes similarity scores against source subjects and estimates an initial personalized latent representation.
+
+When similarity confidence is low, the model gracefully falls back to a population-level embedding instead of relying on unreliable donor selection.
+
+---
+
+## Drift Tracking Kalman Filter (DTKF)
+
+Rather than assuming the subject representation remains constant throughout an experiment, DARWIN continuously updates the latent subject embedding using a lightweight diagonal Kalman Filter.
+
+This enables the framework to adapt naturally to gradual physiological changes while maintaining computational efficiency suitable for real-time BCI systems.
+
+---
+
+## FiLM-Based Subject Conditioning
+
+Feature-wise Linear Modulation (FiLM) conditions the classifier using the current latent subject state, allowing predictions to remain personalized without modifying the backbone encoder.
+
+---
+
+# Methodology
+
+DARWIN follows a two-stage learning pipeline.
+
+## Phase I — Self-Supervised Representation Learning
+
+- Learn dataset-independent EEG representations
+- Contrastive learning objective
+- Subject-balanced negative sampling
+- Frozen encoder after convergence
+
+---
+
+## Phase II — Supervised Fine-Tuning
+
+- Initialize subject representations
+- Train FiLM conditioning layers
+- Train lightweight classifier
+- Keep encoder weights fixed
+
+---
+
+## Test-Time Adaptation
+
+Inference proceeds without gradient updates.
+
+1. Estimate initial subject embedding via SSRS.
+2. Continuously refine the embedding using DTKF.
+3. Condition extracted EEG features through FiLM.
+4. Produce task predictions.
+
+No labels, calibration, or optimization steps are required during deployment.
+
+---
+
+# Repository Structure
+
+```
+
+DARWIN/
+
+├── README.md
+├── LICENSE
+├── CHANGELOG.md
+├── requirements.txt
+│
+├── configs/
+│
 ├── docs/
-│   ├── ARCHITECTURE.md         ← module-by-module spec (LSP, SSRS, FiLM, DTKF, classifier)
-│   ├── PREPROCESSING.md        ← the raw-EEG → windowed-embedding data pipeline
-│   ├── ROADMAP.md              ← 8-week milestone plan, tracked as a checklist
-│   ├── EVALUATION.md           ← protocols, baselines, ablations
-│   └── RISKS.md                ← assumptions, failure criteria, contingencies
-├── src/                        ← (to be populated — see ROADMAP Week 1)
-├── data/                       ← (gitignored — pointers/configs only, no raw EEG committed)
-└── notebooks/                  ← exploratory + diagnostic notebooks (probes, t-SNE, entropy plots)
+│ ├── architecture.md
+│ ├── methodology.md
+│ ├── preprocessing.md
+│ ├── training.md
+│ ├── evaluation.md
+│ ├── datasets.md
+│ ├── usage.md
+│ └── references.md
+│
+├── assets/
+│ ├── architecture.png
+│ ├── pipeline.png
+│ └── figures/
+│
+├── src/
+│ ├── data/
+│ ├── models/
+│ ├── losses/
+│ ├── trainers/
+│ ├── evaluation/
+│ └── utils/
+│
+├── notebooks/
+│
+└── experiments/
+
 ```
-
-> `src/`, `data/`, and `notebooks/` are placeholders for this documentation drop — create them as Week 1 deliverables land.
-
-## Key design decisions (quick reference)
-
-| Decision | Why |
-|---|---|
-| Unified 64-dim space for SSL, SSRS, DTKF, and FiLM | Eliminates the need for a learned/undefined Kalman measurement model — `innovation = z_t − e_u(t−1)` directly, no `H` matrix. |
-| Learnable Spatial Projection instead of rigid channel intersection | Preserves information from non-overlapping channels across 4 heterogeneous montages (64/32/22/16 ch) instead of discarding it. |
-| Confidence-gated SSRS fallback | Converts a single point of failure (bad donor match) into graceful degradation to population-average conditioning. |
-| Subject-balanced negative sampling in Phase-0 SSL | Stops the encoder from using subject identity as a shortcut instead of learning task-relevant structure. |
-| Stage 3.5 empirical gate | Validates the core "subjects vs. sessions are separable" hypothesis on baseline features *before* building any DARWIN-specific module. |
-| Fixed hyperparameters (no grid search) | λ_sparse=0.01, λ_smooth=0.001, τ=0.5, Q=0.001/dim, R=0.1/dim, clip=[−3,3] — set by reasoning; see [Table 1](docs/ARCHITECTURE.md#fixed-hyperparameters). |
-
-## Evaluation at a glance
-
-- **LOSO** (Leave-One-Subject-Out), **LOSSO** (Leave-One-Session-Out), **Cross-Dataset**, and a **Calibration Curve** (accuracy vs. 0–60s of unlabeled adaptation data).
-- Baselines: EEGNet, FBCNet, EEG Conformer, GAT, CORAL-DG, SCALE-Net, TS²-DER.
-- Full ablation table (remove LSP / SSRS / DTKF / FiLM / subject-balanced sampling) in [`docs/EVALUATION.md`](docs/EVALUATION.md).
-
-## Data pipeline
-
-Raw EEG is resampled, referenced, notch-filtered, epoched, artifact-clipped, normalized, spatially projected (LSP), and band-filtered *before* the train/val/test split boundary; windowing and pooling happen *after* the split so no window ever straddles two splits. Full detail, including the exact filter-bank edges and per-window DTKF update cadence, is in [`docs/PREPROCESSING.md`](docs/PREPROCESSING.md).
-
-## Model budget
-
-Total model size is designed to stay **under 50K parameters**, with **no test-time backpropagation** — LSP (~1K), EEGNet-style encoder (~18K), FiLM MLP + subject embedding table + classifier (~15.5K, Phase 1 only).
-
-## Team & scope
-
-Scoped for a **2–3 person team**, no fixed deadline. Every planned addition is a diagnostic, a reordering, or a small parameter change — no new model components beyond the fixed-width projection head and the lightweight spatial mixer.
-
-## Weekly development log
-
-Progress against the roadmap is tracked in [`CHANGELOG.md`](CHANGELOG.md). Each week's entry links to the relevant diagnostics (probe accuracies, entropy distributions, innovation residuals, ablation deltas) as they're produced.
-
-## Contributing
-
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for branch conventions, how to log a diagnostic result, and how to propose a deviation from the fixed hyperparameters in Table 1.
 
 ---
 
-*This README summarizes Internal Architecture Specification Rev. 3.5 (July 2026, Status: Final Review). For the full spec, see the original document.*
+# Datasets
+
+DARWIN is designed to support heterogeneous EEG datasets with varying channel layouts and recording protocols.
+
+The preprocessing pipeline accommodates multiple electrode configurations through learnable spatial harmonization rather than fixed channel intersection.
+
+Detailed dataset information is available in:
+
+```
+
+docs/datasets.md
+
+```
+
+---
+
+# Experimental Evaluation
+
+The framework is evaluated under multiple generalization settings, including:
+
+- Leave-One-Subject-Out (LOSO)
+- Leave-One-Session-Out (LOSSO)
+- Cross-Dataset Evaluation
+- Calibration-Free Adaptation
+- Component Ablation Studies
+
+Performance is compared against both classical EEG decoders and modern domain adaptation methods.
+
+---
+
+# Design Principles
+
+DARWIN is built around four guiding principles:
+
+- Explicit modeling instead of enforced invariance
+- Lightweight adaptation suitable for real-time deployment
+- Calibration-free inference
+- Unified latent representations across all adaptation modules
+
+---
+
+# Documentation
+
+Comprehensive technical documentation is provided in the `docs/` directory.
+
+| Document | Description |
+|----------|-------------|
+| architecture.md | Complete architectural design |
+| methodology.md | Training methodology |
+| preprocessing.md | EEG preprocessing pipeline |
+| datasets.md | Dataset preparation |
+| training.md | Training procedures |
+| evaluation.md | Experimental protocols |
+| usage.md | Running experiments |
+| references.md | Bibliography |
+
+---
+
+# Future Extensions
+
+Potential future directions include:
+
+- Graph-based subject similarity propagation
+- Full covariance Kalman filtering
+- Cross-paradigm EEG adaptation
+- Multi-modal physiological integration
+- Online continual learning
+
+---
+
+# Citation
+
+If you use DARWIN in your research, please cite the accompanying publication (to be released).
+
+```bibtex
+@article{darwin2026,
+  title={DARWIN: Dual Adaptation Framework for Robust Cross-Session and Cross-Subject EEG Decoding},
+  author={Authors},
+  year={2026}
+}
+```
+
+---
+
+# License
+
+This project is released under the MIT License.
+
+See the `LICENSE` file for details.
+
+---
+
+## Acknowledgements
+
+DARWIN is inspired by recent advances in self-supervised representation learning, domain generalization, adaptive filtering, and calibration-free Brain-Computer Interface research.
