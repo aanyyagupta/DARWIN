@@ -151,25 +151,19 @@ No labels, calibration procedure, or optimization step is required at any point 
 DARWIN/
 ├── README.md
 ├── LICENSE
-├── CHANGELOG.md
+├── CHANGELOG.md       ← weekly development log (append-only)
 ├── requirements.txt
 │
 ├── configs/
 │
 ├── docs/
-│   ├── architecture.md
-│   ├── methodology.md
-│   ├── preprocessing.md
+│   ├── architecture.md         ← module-by-module spec (LSP, SSRS, FiLM, DTKF, classifier)
+│   ├── preprocessing.md        ← the raw-EEG → windowed-embedding data pipeline
 │   ├── training.md
 │   ├── evaluation.md
 │   ├── datasets.md
 │   ├── usage.md
 │   └── references.md
-│
-├── assets/
-│   ├── architecture.png
-│   ├── pipeline.png
-│   └── figures/
 │
 ├── src/
 │   ├── data/
