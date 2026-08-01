@@ -1,0 +1,9 @@
+﻿.venv/
+cache/
+C-/
+__pycache__/
+*.pyc
+.DS_Store
+*.npz
+*.mat
+*.edf
