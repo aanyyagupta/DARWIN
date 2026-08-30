@@ -1,4 +1,0 @@
-moabb
-mne
-scipy
-numpy
