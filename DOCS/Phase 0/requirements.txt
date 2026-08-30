@@ -1,0 +1,4 @@
+moabb
+mne
+scipy
+numpy
